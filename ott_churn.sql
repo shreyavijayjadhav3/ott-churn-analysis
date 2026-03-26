@@ -221,3 +221,62 @@ SELECT
 				 ON p.user_id = s.user_id 
 				 GROUP BY s.language_preference -- Grouping by language to compare the "Value" of different regional markets
 				 ORDER BY avg_customer_value DESC; -- Sorting by the most profitable language groups first
+
+
+/*Q11. EARLY CHURN WARNING SIGNALS
+Business Question : Which behavioural signals appear in the weeks before a suer churns and how early do they appear ?*/
+
+WITH user_last_activity AS (
+      SELECT 
+	        w.user_id,
+			MAX(CAST(w.watch_date AS DATE )) AS last_watch_date,
+			AVG(CAST(w.watch_duration_mins AS FLOAT )) AS avg_watch_duration
+	   FROM watch_history w
+	   GROUP BY w.user_id 
+
+	   ), 
+	   user_payment_risk AS (
+	   SELECT 
+	         user_id, 
+			 SUM (
+			       CASE 
+				       WHEN payment_status = 'Failed' THEN 1
+					   ELSE 0
+					END
+                   ) AS failed_payment_count 
+		FROM payments
+		GROUP BY user_id 
+		), 
+		user_support_risk AS (
+		SELECT 
+		      user_id, 
+			  COUNT(ticket_id) AS total_tickets, 
+			  SUM(
+			       CASE 
+				       WHEN issue_type = 'Cancellation Request' THEN 1
+					   ELSE 0
+					END 
+					) AS cancellation_requests
+		 FROM support_tickets
+		 GROUP BY user_id 
+		 )
+
+		 -- main query 
+
+		 SELECT 
+		 s.user_id, s.subscription_plan, s.acquisition_channel, s.churned, s.churn_date,
+		 DATEDIFF(
+		       day, 
+			   la.last_watch_date,
+			   ISNULL(CAST(s.churn_date AS DATE ),
+			        CAST ('2024-12-31' AS DATE))
+					)                                AS days_inactive_before_churn,
+					ROUND (la.avg_watch_duration, 1) AS avg_watch_duration_mins,
+					COALESCE(pr.failed_payment_count, 0) AS failed_payment_count, 
+					COALESCE (sr.cancellation_requests,0) AS cancellation_requests
+		FROM subscribers s
+		LEFT JOIN user_last_activity la ON s.user_id = la.user_id
+		LEFT JOIN user_payment_risk pr ON s.user_id = pr.user_id
+		LEFT JOIN user_support_risk sr ON s.user_id = sr.user_id
+		WHERE s.churned = 1
+		ORDER BY days_inactive_before_churn DESC; 
