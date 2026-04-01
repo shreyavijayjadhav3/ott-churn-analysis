@@ -59,6 +59,29 @@ FROM subscribers
 GROUP BY subscription_plan
 ORDER BY total_revenue DESC; 
 
+/* Q2 REVISED: ACTUAL REVENUE BY PLAN (SUCCESSFUL PAYMENTS ONLY) */
+SELECT 
+    plan_at_payment AS subscription_plan, -- Using the plan they had AT the time of payment
+    COUNT(DISTINCT user_id) AS unique_paying_subscribers,
+    SUM(amount_inr) AS total_actual_revenue, 
+    
+    -- Subscriber Share (Based on successful payments)
+    ROUND(
+        CAST(COUNT(DISTINCT user_id) AS FLOAT) / 
+        SUM(COUNT(DISTINCT user_id)) OVER () * 100, 2
+    ) AS subscriber_share_pct,
+    
+    -- Revenue Share (Actual money collected)
+    ROUND(
+        CAST(SUM(amount_inr) AS FLOAT) / 
+        SUM(SUM(amount_inr)) OVER () * 100, 2
+    ) AS revenue_share_pct
+
+FROM payments
+WHERE payment_status = 'Success' -- CRITICAL: Exclude failed payments
+GROUP BY plan_at_payment
+ORDER BY total_actual_revenue DESC;
+
 /*Q3. CHURN RATE BY SUBSCRIPTION PLAN 
 Business Question : Which subscrption plan contributes to most churn rate */
 
